@@ -39,6 +39,8 @@ Solver::Solver(Solver &&rvalue) noexcept
   words = std::move(rvalue.words);
   temp = std::move(rvalue.temp);
   prev_guess = std::move(rvalue.prev_guess);
+  total_weight = std::move(rvalue.total_weight);
+  total_entropy = std::move(rvalue.total_entropy);
 }
 
 Solver &Solver::operator=(Solver &&rvalue) noexcept
@@ -47,6 +49,8 @@ Solver &Solver::operator=(Solver &&rvalue) noexcept
   words = std::move(rvalue.words);
   temp = std::move(rvalue.temp);
   prev_guess = std::move(rvalue.prev_guess);
+  total_weight = std::move(rvalue.total_weight);
+  total_entropy = std::move(rvalue.total_entropy);
   return *this;
 }
 
@@ -91,6 +95,8 @@ void Solver::make_guess(char (&guess)[5])
 
 void Solver::make_guess(char (&guess)[5], const char (&result)[5])
 {
+  ASSERT(prev_guess.size(), ==, 5);
+  temp.reserve(words.size() / 2);
   // update from result
   total_weight = 0;
   for (auto &word : words)
@@ -199,7 +205,7 @@ inline bool Solver::word_fits_result(const T &word, const U &guessed, const V &r
   return true;
 }
 
-inline void Solver::calc_total_entropy()
+void Solver::calc_total_entropy()
 {
   total_entropy = 0;
   for (const auto &word : words)
@@ -208,3 +214,159 @@ inline void Solver::calc_total_entropy()
     total_entropy -= p * std::log2(p);
   }
 }
+
+SolverParallel::SolverParallel(const std::string &data_path)
+    : Solver(data_path)
+{
+  terminate_pool = false;
+  int num_threads = std::max(1u, std::thread::hardware_concurrency());
+  threads.reserve(num_threads);
+  for (int i = 0; i < num_threads; i++)
+  {
+    threads.push_back(std::thread([this]()
+                                  { this->thread_start_routine(); }));
+  }
+}
+
+SolverParallel::SolverParallel(SolverParallel &&rvalue) noexcept
+{
+  word_file_path = std::move(rvalue.word_file_path);
+  words = std::move(rvalue.words);
+  temp = std::move(rvalue.temp);
+  prev_guess = std::move(rvalue.prev_guess);
+  total_weight = std::move(rvalue.total_weight);
+  total_entropy = std::move(rvalue.total_entropy);
+  job_stack = std::move(rvalue.job_stack);
+  res_stack = std::move(rvalue.res_stack);
+  terminate_pool = std::move(rvalue.terminate_pool);
+  delete &rvalue;
+  int num_threads = std::max(1u, std::thread::hardware_concurrency());
+  for (int i = 0; i < num_threads; i++)
+  {
+    threads.push_back(std::thread([this]()
+                                  { this->thread_start_routine(); }));
+  }
+}
+
+SolverParallel &SolverParallel::operator=(SolverParallel &&rvalue) noexcept
+{
+  word_file_path = std::move(rvalue.word_file_path);
+  words = std::move(rvalue.words);
+  temp = std::move(rvalue.temp);
+  prev_guess = std::move(rvalue.prev_guess);
+  total_weight = std::move(rvalue.total_weight);
+  total_entropy = std::move(rvalue.total_entropy);
+  job_stack = std::move(rvalue.job_stack);
+  res_stack = std::move(rvalue.res_stack);
+  terminate_pool = std::move(rvalue.terminate_pool);
+  delete &rvalue;
+  int num_threads = std::max(1u, std::thread::hardware_concurrency());
+  for (int i = 0; i < num_threads; i++)
+  {
+    threads.push_back(std::thread([this]()
+                                  { this->thread_start_routine(); }));
+  }
+  return *this;
+}
+
+SolverParallel::~SolverParallel()
+{
+  terminate_pool = true;
+  job_cv.notify_all();
+  for (std::thread &t : threads)
+  {
+    t.join();
+  }
+  threads.clear();
+}
+
+void SolverParallel::make_guess(char (&guess)[5])
+{
+  const Word *res = nullptr;
+  double best = std::numeric_limits<double>::max();
+  job_stack.reserve(words.size());
+  res_stack.reserve(words.size());
+  for (const auto &word : words)
+  {
+    add_job([this, &word]()
+            {
+              const double expect = this->calc_expect(word);
+              {
+                const std::unique_lock<std::mutex> lock(res_mutex);
+                res_stack.push_back(std::make_pair(expect, &word));
+              }
+              res_cv.notify_all(); });
+  }
+  for (int i = 0; i < (int)words.size(); i++)
+  {
+    std::pair<const double, const Word *> *ret;
+    {
+      std::unique_lock<std::mutex> lock2(res_mutex);
+      res_cv.wait(lock2, [this]()
+                  { return res_stack.size(); });
+      ret = &res_stack.back();
+      res_stack.pop_back();
+    }
+    if (ret->first < best)
+    {
+      best = ret->first;
+      res = ret->second;
+    }
+  }
+  ASSERT(res, !=, nullptr);
+  prev_guess = res->val;
+  for (int i = 0; i < 5; i++)
+  {
+    guess[i] = prev_guess[i];
+  }
+}
+
+void SolverParallel::make_guess(char (&guess)[5], const char (&result)[5])
+{
+  ASSERT(prev_guess.size(), ==, 5);
+  // update from result
+  temp.reserve(words.size() / 2);
+  total_weight = 0;
+  for (auto &word : words)
+  {
+    if (word_fits_result(word.val, prev_guess, result, {'B', 'Y', 'G'}))
+    {
+      ASSERT(word.weight, >, 0);
+      total_weight += word.weight;
+      temp.push_back(std::move(word));
+    }
+  }
+  ASSERT(total_weight, >, 0);
+  std::swap(words, temp);
+  temp.clear();
+  ASSERT(words.empty(), ==, false);
+  calc_total_entropy();
+  make_guess(guess);
+}
+
+inline void SolverParallel::add_job(std::function<void()> job)
+{
+  {
+    const std::unique_lock<std::mutex> lock(job_mutex);
+    job_stack.push_back(job);
+  }
+  job_cv.notify_one();
+}
+
+void SolverParallel::thread_start_routine()
+{
+  std::function<void()> job;
+  while (true)
+  {
+    {
+      std::unique_lock<std::mutex> lock(job_mutex);
+      job_cv.wait(lock, [this]()
+                  { return job_stack.size() || terminate_pool; });
+      if (terminate_pool)
+        return;
+      job = job_stack.back();
+      job_stack.pop_back();
+    }
+    job();
+  }
+};

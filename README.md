@@ -13,9 +13,9 @@ The following data was taken from [3 Blue 1 Brown](https://github.com/3b1b/video
 ## Compilation
 
 ```sh
-/usr/local/bin/g++-11 -std=gnu++17 -Og -I include -o bin/debug src/main.cpp src/Adversary.cpp src/Solver.cpp -Wall -Wextra -Wshadow -Wdouble-promotion -Wformat=2 -Wformat-overflow -Wformat-truncation -Wundef -fno-common -D_DEBUG
+/usr/local/bin/g++-11 -std=gnu++17 -Og -I include -o bin/debug src/*.cpp -Wall -Wextra -Wshadow -Wdouble-promotion -Wformat=2 -Wformat-overflow -Wformat-truncation -Wundef -fno-common -D_DEBUG
 ```
 
 ```sh
-/usr/local/bin/g++-11 -std=gnu++17 -Ofast -I include -o bin/wordle src/main.cpp src/Adversary.cpp src/Solver.cpp
+/usr/local/bin/g++-11 -std=gnu++17 -Ofast -I include -o bin/wordle src/*.cpp
 ```

@@ -85,6 +85,21 @@ namespace fs = std::filesystem;
 #include <constants.hpp>
 #endif
 
+#ifndef THREAD_H
+#define THREAD_H
+#include <thread>
+#endif
+
+#ifndef MUTEX_H
+#define MUTEX_H
+#include <mutex>
+#endif
+
+#ifndef FUNCTIONAL_H
+#define FUNCTIONAL_H
+#include <functional>
+#endif
+
 #ifdef _DEBUG
 #define ASSERT(left, operator, right)                                                                                                                                                            \
   {                                                                                                                                                                                              \
@@ -115,11 +130,17 @@ public:
   Solver(const std::string &data_path);
 
   /**
-   * @brief Construct a new Solver object by moving
+   * @brief Solver move constructor
    *
    * @param rvalue
    */
   Solver(Solver &&rvalue) noexcept;
+
+  /**
+   * @brief Destroy the Solver object
+   *
+   */
+  ~Solver() = default;
 
   Solver &operator=(Solver &&rvalue) noexcept;
 
@@ -144,7 +165,9 @@ public:
    */
   void make_guess(char (&guess)[5], const char (&result)[5]);
 
-private:
+protected:
+  Solver() = default;
+
   class Word
   {
   public:
@@ -160,13 +183,69 @@ private:
 
   double calc_expect(const Word &guess);
   inline double heuristic(const double entropy);
-  template <class T, class U, class V>
+  template <typename T, typename U, typename V>
   inline bool word_fits_result(const T &word, const U &guessed, const V &result, const char (&code)[3]);
-  inline void calc_total_entropy();
+  void calc_total_entropy();
 
   fs::path word_file_path;
   std::vector<Word> words, temp;
   std::string prev_guess;
   double total_weight, total_entropy;
   bool used[5];
+};
+
+/**
+ * @brief Wordle solver bot with parallelization
+ *
+ */
+class SolverParallel : public Solver
+{
+public:
+  /**
+   * @brief Construct a new Solver Parallel object
+   *
+   * @param data_path Path to data dir containing word_weights.txt
+   */
+  SolverParallel(const std::string &data_path);
+
+  /**
+   * @brief Solver Parallel move constructor
+   *
+   * @param rvalue
+   */
+  SolverParallel(SolverParallel &&rvalue) noexcept;
+
+  SolverParallel &operator=(SolverParallel &&rvalue) noexcept;
+
+  /**
+   * @brief Destroy the Solver Parallel object
+   *
+   */
+  ~SolverParallel();
+
+  /**
+   * @brief Make a guess
+   *
+   * @param guess Guess will be placed in here
+   */
+  void make_guess(char (&guess)[5]);
+
+  /**
+   * @brief Make a guess
+   *
+   * @param guess Guess will be placed in here
+   * @param result Result from previous guess
+   */
+  void make_guess(char (&guess)[5], const char (&result)[5]);
+
+private:
+  inline void add_job(std::function<void()> job);
+  void thread_start_routine();
+
+  bool terminate_pool;
+  std::vector<std::function<void()>> job_stack;
+  std::vector<std::pair<const double, const Word *>> res_stack;
+  std::vector<std::thread> threads;
+  std::mutex job_mutex, res_mutex;
+  std::condition_variable job_cv, res_cv;
 };
