@@ -8,11 +8,14 @@ The following data was taken from [3 Blue 1 Brown](https://github.com/3b1b/video
 2. `data/freq_map.json`
 3. `data/possible_words.txt`
 4. Priors calculation logic for word weights in `src/util/convert.py`
+5. Entropy to expected guesses function in `src/Solver.cpp`
 
 ## Compilation
 
 ```sh
-/usr/local/bin/g++-11 -I include -o bin/test src/main.cpp src/Adversary.cpp -Wall -Wextra -Wshadow -Wdouble-promotion -Wformat=2 -Wformat-overflow -Wformat-truncation -Wundef -fno-common
+/usr/local/bin/g++-11 -std=gnu++17 -Og -I include -o bin/debug src/main.cpp src/Adversary.cpp src/Solver.cpp -Wall -Wextra -Wshadow -Wdouble-promotion -Wformat=2 -Wformat-overflow -Wformat-truncation -Wundef -fno-common -D_DEBUG
+```
 
-/usr/local/bin/g++-11 -I include -o bin/wordle src/main.cpp src/Adversary.cpp -Ofast
+```sh
+/usr/local/bin/g++-11 -std=gnu++17 -Ofast -I include -o bin/wordle src/main.cpp src/Adversary.cpp src/Solver.cpp
 ```
