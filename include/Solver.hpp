@@ -95,11 +95,6 @@ namespace fs = std::filesystem;
 #include <mutex>
 #endif
 
-#ifndef FUNCTIONAL_H
-#define FUNCTIONAL_H
-#include <functional>
-#endif
-
 #ifdef _DEBUG
 #define ASSERT(left, operator, right)                                                                                                                                                            \
   {                                                                                                                                                                                              \
@@ -182,16 +177,14 @@ protected:
   };
 
   double calc_expect(const Word &guess);
-  inline double heuristic(const double entropy);
+  static inline double heuristic(const double entropy);
   template <typename T, typename U, typename V>
-  inline bool word_fits_result(const T &word, const U &guessed, const V &result, const char (&code)[3]);
-  void calc_total_entropy();
+  static inline bool word_fits_result(const T &word, const U &guessed, const V &result, const char (&code)[3]);
 
   fs::path word_file_path;
-  std::vector<Word> words, temp;
+  std::vector<Word> words;
   std::string prev_guess;
-  double total_weight, total_entropy;
-  bool used[5];
+  double total_weight;
 };
 
 /**
@@ -239,13 +232,14 @@ public:
   void make_guess(char (&guess)[5], const char (&result)[5]);
 
 private:
-  inline void add_job(std::function<void()> job);
-  void thread_start_routine();
+  static void thread_start_routine(SolverParallel *solver, const int i);
 
-  bool terminate_pool;
-  std::vector<std::function<void()>> job_stack;
-  std::vector<std::pair<const double, const Word *>> res_stack;
   std::vector<std::thread> threads;
-  std::mutex job_mutex, res_mutex;
-  std::condition_variable job_cv, res_cv;
+  std::vector<std::pair<int, int>> thread_args;
+  std::vector<std::vector<double>> thread_ret;
+  std::vector<bool> thread_status;
+  std::mutex pool_mutex, master_mutex;
+  std::condition_variable pool_cv, master_cv;
+  int thread_done_count;
+  bool terminate_pool;
 };

@@ -67,7 +67,6 @@ void play(Adversary adversary, T solver, const int n)
   {
     std::printf("%d: %'.3f\n", i + 1, (double)stage_runtimes[i] / n);
   }
-  std::exit(EXIT_SUCCESS);
 }
 
 template <typename T>
@@ -104,7 +103,6 @@ void play(Adversary adversary, T solver)
     adversary.judge(word, res);
     print_arr("res:  ", res);
   }
-  std::exit(EXIT_SUCCESS);
 }
 
 int main(int argc, char const *argv[])
@@ -112,7 +110,7 @@ int main(int argc, char const *argv[])
   std::setlocale(LC_NUMERIC, "");
   if (argc < 4)
   {
-    std::cout << "Usage: main <path to data dir> <number of game iterations> <s || p>\n";
+    std::cout << "Usage: main <path to data dir> <number of game iterations> <s OR p>\n";
     return EXIT_SUCCESS;
   }
 
