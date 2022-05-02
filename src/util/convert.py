@@ -17,7 +17,7 @@ def calc_frequency_based_priors(n_common=2048, width_under_sigmoid=8):
     left = width_under_sigmoid * n_common / n - width_under_sigmoid
     for i, word in enumerate(words):
       x = left + i * width_under_sigmoid / (n - 1)
-      dest.write(f"{word} {max(1e-7, sigmoid(x))}\n")
+      dest.write(f"{word} {sigmoid(x)}\n")
 
 if __name__ == '__main__':
   calc_frequency_based_priors()

@@ -55,18 +55,11 @@ void Solver::reset()
   std::ifstream word_file(word_file_path);
   std::string line;
   total_weight = 0;
-  /*
-    entropy = - SUM_{x in X) (weight_x / total_weight) * log2(weight_x / total_weight)
-            = - SUM_{x in X} weight_x * (log2(weight_x) - log2(total_weight)) / total_weight
-            = - SUM_{x in X} weight_x * log2(weight_x) / total_weight + SUM_{x in X} weight_x / total_weight * log2(total_weight)
-            = - SUM_{x in X} weight_x * log2(weight_x) / total_weight + log2(total_weight)
-    */
   while (std::getline(word_file, line))
   {
     if (line.empty())
       continue;
     words.push_back(std::move(Word(line.substr(0, 5), std::stod(line.substr(6)))));
-    ASSERT(words.back().weight, >, 0);
     total_weight += words.back().weight;
   }
   ASSERT(total_weight, >, 0);
@@ -106,7 +99,6 @@ void Solver::make_guess(char (&guess)[5], const char (&result)[5])
   {
     if (word_fits_result(word.val, prev_guess, result, {'B', 'Y', 'G'}))
     {
-      ASSERT(word.weight, >, 0);
       total_weight += word.weight;
       temp.push_back(std::move(word));
     }
@@ -119,49 +111,48 @@ void Solver::make_guess(char (&guess)[5], const char (&result)[5])
 
 double Solver::calc_expect(const Solver::Word &guess)
 {
-  ASSERT(total_weight, >, 0);
-  double expect_entropy = 0; // mean result entropy
-  double all_results_total_weight = 0;
-  // 0=Gray, 1=Yellow, 2=Green
-  // skip all greens
-  char result[5]{0};
-  for (int i = 1; i < SIZE_OF_RESULTS_SET; i++)
+  if (words.size() <= 1)
+    return 1;
+  ASSERT(total_weight, >, guess.weight);
+  /*
+  R = set of words matching a specific result
+  r_weight = total weight of R
+  entropy = - SUM_{w in R} w_weight * log2(w_weight) / r_weight + log2(r_weight)
+  first = - SUM_{w in W} w_weight * log2(w_weight)
+  second = r_weight
+  */
+  std::vector<std::pair<double, double>> results;
+  results.reserve(SIZE_OF_RESULTS_SET);
+  for (int i = 0; i < SIZE_OF_RESULTS_SET; i++)
   {
-    /*
-    entropy = - SUM_{x in X) (weight_x / total_weight) * log2(weight_x / total_weight)
-            = - SUM_{x in X} weight_x * (log2(weight_x) - log2(total_weight)) / total_weight
-            = - SUM_{x in X} weight_x * log2(weight_x) / total_weight + SUM_{x in X} weight_x / total_weight * log2(total_weight)
-            = - SUM_{x in X} weight_x * log2(weight_x) / total_weight + log2(total_weight)
-    */
-    double result_total_weight = 0, result_entropy = 0;
-    for (const auto &word : words)
-    {
-      if (word_fits_result(word.val, guess.val, result, {0, 1, 2}))
-      {
-        result_total_weight += word.weight;
-        result_entropy -= word.weight * std::log2(word.weight);
-      }
-    }
-    if (result_total_weight > 0)
-    {
-      all_results_total_weight += result_total_weight;
-      expect_entropy += result_entropy + std::log2(result_total_weight) * result_total_weight;
-    }
+    results.push_back(std::make_pair(0, 0));
+  }
+  for (const auto &word : words)
+  {
 
-    result[0]++;
-    for (int j = 0; j < 5 && result[j] > 2; j++)
+    const int i = word_to_result_index(word, guess);
+    results[i].first -= word.weight * std::log2(word.weight);
+    results[i].second += word.weight;
+  }
+  // skip all greens (SIZE_OF_RESULTS_SET - 1)
+  results.pop_back();
+  /*
+  R = set of all results
+  t = total weight of words without all greens
+  mean_entropy = SUM_{r in R} r_weight * r_entropy / t
+  */
+  double mean_entropy = 0;
+  for (const auto &result : results)
+  {
+    if (result.second > 0)
     {
-      result[j] = 0;
-      result[j + 1]++;
+      mean_entropy += result.first + std::log2(result.second) * result.second;
     }
   }
-  // check if all greens is the only possible result
-  if (all_results_total_weight == 0)
-    return 1;
-  expect_entropy /= all_results_total_weight;
-  ASSERT(expect_entropy, >=, 0);
-  ASSERT(std::isnan(expect_entropy), ==, false);
-  return guess.weight / total_weight + (1 - guess.weight / total_weight) * heuristic(expect_entropy);
+  mean_entropy /= total_weight - guess.weight;
+  ASSERT(mean_entropy, >=, 0);
+  ASSERT(std::isnan(mean_entropy), ==, false);
+  return guess.weight / total_weight + (1 - guess.weight / total_weight) * heuristic(mean_entropy);
 }
 
 inline double Solver::heuristic(const double entropy)
@@ -169,6 +160,24 @@ inline double Solver::heuristic(const double entropy)
   // a straight line between (0, 1) and (11.5, 3.5)
   // simple regression on assumption that 11.5 bits of entropy requires about 3.5 guesses
   return 0.217391304347826 * entropy + 1;
+}
+
+double Solver::get_entropy()
+{
+  /*
+  W = set of possible words left
+  t = total weight of possible words
+  entropy = - SUM_{w in W} w_weight * log2(w_weight) / t + log2(t)
+  */
+  double entropy = 0;
+  for (const auto &word : words)
+  {
+    if (word.weight > 0)
+    {
+      entropy -= word.weight * std::log2(word.weight);
+    }
+  }
+  return entropy / total_weight + std::log2(total_weight);
 }
 
 template <typename T, typename U, typename V>
@@ -220,6 +229,44 @@ inline bool Solver::word_fits_result(const T &word, const U &guessed, const V &r
     }
   }
   return true;
+}
+
+template <typename T, typename U>
+inline int Solver::word_to_result_index(const T &word, const U &guessed)
+{
+  bool word_used[5], guess_used[5];
+  // 0=Gray, 1=Yellow, 2=Green
+  int result = 0;
+  for (int i = 0, radix = 1; i < 5; i++, radix *= 3)
+  {
+    if (guessed[i] == word[i])
+    {
+      result += 2 * radix;
+      word_used[i] = true;
+      guess_used[i] = true;
+    }
+    else
+    {
+      word_used[i] = false;
+      guess_used[i] = false;
+    }
+  }
+  for (int i = 0, radix = 1; i < 5; i++, radix *= 3)
+  {
+    if (!guess_used[i])
+    {
+      for (int j = 0; j < 5; j++)
+      {
+        if (!word_used[j] && guessed[i] == word[j])
+        {
+          result += radix;
+          word_used[j] = true;
+          break;
+        }
+      }
+    }
+  }
+  return result;
 }
 
 SolverParallel::SolverParallel(const std::string &data_path)
@@ -307,6 +354,9 @@ void SolverParallel::make_guess(char (&guess)[5])
   const Word *res = nullptr;
   double best = std::numeric_limits<double>::max();
   int words_per_thread = (words.size() + threads.size() - 1) / threads.size();
+  ASSERT(threads.size(), ==, thread_args.size());
+  ASSERT(thread_args.size(), ==, thread_status.size());
+  ASSERT(thread_ret.size(), ==, thread_args.size());
   {
     std::unique_lock<std::mutex> lock1(pool_mutex);
     for (size_t i = 0; i < thread_args.size(); i++)
@@ -326,13 +376,13 @@ void SolverParallel::make_guess(char (&guess)[5])
     }
     {
       std::unique_lock<std::mutex> lock2(pool_mutex);
-      ASSERT(thread_ret.size(), ==, 8);
       for (size_t j = 0; j < thread_ret.size(); j++)
       {
         if (thread_status[j] || thread_ret[j].empty())
           continue;
         for (size_t k = 0; k < thread_ret[j].size(); k++)
         {
+          ASSERT(std::isnan(thread_ret[j][k]), ==, false);
           if (thread_ret[j][k] < best)
           {
             best = thread_ret[j][k];
@@ -364,7 +414,6 @@ void SolverParallel::make_guess(char (&guess)[5], const char (&result)[5])
   {
     if (word_fits_result(word.val, prev_guess, result, {'B', 'Y', 'G'}))
     {
-      ASSERT(word.weight, >, 0);
       total_weight += word.weight;
       temp.push_back(std::move(word));
     }
@@ -382,12 +431,12 @@ void SolverParallel::thread_start_routine(SolverParallel *solver, const int i)
   {
     {
       std::unique_lock<std::mutex> lock1(solver->pool_mutex);
-      ASSERT((int)solver->thread_status.size(), >, i);
+      ASSERT(i, <, (int)solver->thread_status.size());
       solver->pool_cv.wait(lock1, [&]()
                            { return solver->thread_status[i] || solver->terminate_pool; });
       if (solver->terminate_pool)
         return;
-      ASSERT((int)solver->thread_args.size(), >, i);
+      ASSERT(i, <, (int)solver->thread_args.size());
       j = solver->thread_args[i].first;
       k = solver->thread_args[i].second;
     }

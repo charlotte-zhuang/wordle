@@ -62,6 +62,7 @@ void Adversary::judge(const char (&guess)[5], char (&result)[5])
         {
           result[i] = 'Y';
           used[j] = true;
+          break;
         }
       }
     }

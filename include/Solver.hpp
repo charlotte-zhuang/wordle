@@ -160,6 +160,13 @@ public:
    */
   void make_guess(char (&guess)[5], const char (&result)[5]);
 
+  /**
+   * @brief Get the entropy in the current game.
+   * 
+   * @return double 0 ≤ entropy, probably less than 16
+   */
+  double get_entropy();
+
 protected:
   Solver() = default;
 
@@ -180,6 +187,8 @@ protected:
   static inline double heuristic(const double entropy);
   template <typename T, typename U, typename V>
   static inline bool word_fits_result(const T &word, const U &guessed, const V &result, const char (&code)[3]);
+  template <typename T, typename U>
+  static inline int word_to_result_index(const T &word, const U &guessed);
 
   fs::path word_file_path;
   std::vector<Word> words;
