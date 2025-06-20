@@ -1,6 +1,6 @@
 # Wordle Bot
 
-Currently only plays hard mode and searches 1 guess into the future. More features to be included later.
+Currently only plays hard mode and searches 1 guess into the future.
 
 [Link to paper](https://github.com/charlotte-zhuang/wordle/blob/cc285b15d9e629ae3ca6d31e23548e92fbdcda05/parallel-wordle-solver-in-cpp.pdf)
 
